@@ -7,27 +7,22 @@
   <title>ポルテ｜文章から月間希望表へ</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="style.css?v=4feda00f53eb">
-  <link rel="stylesheet" href="monthly.css?v=be3ae3bbb6d2">
+  <link rel="stylesheet" href="monthly.css?v=a3153befe547">
 </head>
 <body>
   <header>
-    <div><h1>ポルテ シフト管理</h1></div>
-    <label>対象年月 <input id="target-month" type="month" min="2020-01" max="2100-12" required></label>
+    <h1>ポルテ <span>シフト管理</span></h1>
+    <div class="month-switch"><button id="previous-month" class="secondary" aria-label="前の月">‹</button><label><span class="sr-only">対象年月</span><input id="target-month" type="month" min="2020-01" max="2100-12" required></label><button id="next-month" class="secondary" aria-label="次の月">›</button></div>
   </header>
-  <aside class="demo-note"><span id="usage-note">勤務希望の下書き · このブラウザに保存</span><details class="demo-details"><summary>このデモについて</summary><p id="demo-description">対応する文章は規則で、それ以外はこのPCのQwenで読み取ります。入力は他の端末と共有されません。確定シフトではありません。</p></details></aside>
-  <nav aria-label="操作メニュー">
-    <button data-view="intake" aria-current="page">希望を入力</button>
-    <button data-view="month">希望表</button>
-    <button data-view="coverage">人数チェック</button>
-    <button data-view="excel">Excel</button>
+  <div class="app-navigation"><nav aria-label="操作メニュー">
+    <button data-view="month" aria-current="page">シフト表</button>
+    <button data-view="intake">希望を入力</button>
     <button data-view="staff">スタッフ</button>
-    <button data-view="staff-edit">スタッフ編集</button>
-    <button data-view="history">履歴</button>
-  </nav>
+  </nav><details class="app-menu"><summary>その他</summary><div><button data-view="excel">Excel入出力</button><button data-view="history">変更履歴</button><details class="demo-details"><summary>このデモについて</summary><p id="usage-note">勤務希望の下書き · このブラウザに保存</p><p id="demo-description">対応する文章は規則で、それ以外はこのPCのQwenで読み取ります。入力は他の端末と共有されません。確定シフトではありません。</p></details></div></details></div>
   <main id="content"></main>
   <p id="message" role="status" aria-live="polite"></p>
   <dialog id="modal" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
   <footer>Patisserie ポルテ · 仮公開デモ</footer>
-  <script type="module" src="monthly-app.js?v=16ff71f4824a"></script>
+  <script type="module" src="monthly-app.js?v=131824623275"></script>
 </body>
 </html>
