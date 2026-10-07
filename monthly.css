@@ -33,3 +33,7 @@ footer { padding: 8px 0 24px; font-size: 13px; } a { color: #2457a7; }
 .staff-read-table { min-width: 660px; }
 .staff-read-table th, .staff-read-table td { white-space: nowrap; }
 .staff-read-table tbody tr:nth-child(even) td { background: #f6f7f9; }
+.shortage-row { background: #fff3df; }
+.import-errors { color: #9f2424; white-space: pre-wrap; }
+.excel-preview { max-height: 440px; overflow: auto; }
+.excel-file { display: block; margin: 12px 0; }

@@ -1,6 +1,10 @@
 import { daysInMonth, normalizeMonthlyProposal, applyMonthlyEntries, makeWeekdayProposal } from './monthly-core.js';
 import { PUBLIC_DEMO } from './runtime-config.js';
 import { parsePublicRequest } from './static-parser.js';
+import { summarizeCoverage } from './coverage.js';
+import { readExcelFile, worksheetRows, readStaffConditions, exportExcel } from './excel-workbook.js';
+import { parseWorksheetRows } from './excel-core.js';
+import { buildExcelImportPlan } from './excel-plan.js';
 
 const KEY = PUBLIC_DEMO ? 'porte-pages-demo-v1' : 'porte-monthly-requests-v1';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -10,6 +14,7 @@ const initial = () => ({ version: 1, month: '2026-10', staff: ['スタッフA', 
 let state = initial();
 try { const saved = JSON.parse(localStorage.getItem(KEY)); if (saved?.version === 1 && Array.isArray(saved.staff) && saved.staff.length && saved.months && Array.isArray(saved.history)) { daysInMonth(saved.month); state = saved; } } catch { /* Start with a clean demo if the saved format cannot be read. */ }
 let view = 'intake', selectedStaff = state.staff[0].id, draft = '', candidate = null, busy = false, timer, staffDraft = null;
+let excelSession = null;
 const content = document.querySelector('#content');
 const monthInput = document.querySelector('#target-month');
 const modal = document.querySelector('#modal');
@@ -34,6 +39,8 @@ function render() {
   if (view === 'staff') renderStaff();
   if (view === 'staff-edit') renderStaffEdit();
   if (view === 'history') renderHistory();
+  if (view === 'coverage') renderCoverage();
+  if (view === 'excel') renderExcel();
 }
 function renderIntake() {
   const s = member();
@@ -100,7 +107,8 @@ function commitEntries(id, entries, source, text) {
 }
 function renderMonth() {
   const count = daysInMonth(state.month);
-  content.innerHTML = `<section><div class="section-heading"><h2>${esc(state.month)} 勤務希望表（未確定）</h2><button id="export" disabled title="Excel原本の読み取り許可を確認後に対応します">Excel出力（準備中）</button></div><p class="muted">セルを押すと手修正できます。上段が開始、下段が終了です。空欄＝未登録、×＝勤務不可。</p><p class="scroll-hint muted">横にスクロールして末日まで確認できます。</p>${[[1, Math.min(16, count)], [17, count]].map(([from, to]) => `<h3>${from}日〜${to}日</h3><div class="table-scroll"><table class="month-table"><thead><tr><th>名前</th>${Array.from({ length: to - from + 1 }, (_, i) => { const d = i + from, w = dow(d); return `<th class="${w === 0 ? 'sun' : w === 6 ? 'sat' : ''}">${d}<small>${'日月火水木金土'[w]}</small></th>`; }).join('')}</tr></thead><tbody>${state.staff.map(s => `<tr><th scope="row">${esc(s.name)}</th>${Array.from({ length: to - from + 1 }, (_, i) => { const day = from + i, entry = requests(s.id)[day]; return `<td><button class="day-cell" data-id="${esc(s.id)}" data-day="${day}" aria-label="${esc(s.name)} ${day}日 ${esc(caption(entry))}">${!entry ? '&nbsp;' : entry.status === 'unavailable' ? '<span class="off">×</span>' : `<span>${esc(entry.start)}</span><span>${esc(entry.end)}</span>`}</button></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}</section>`;
+  content.innerHTML = `<section><div class="section-heading"><h2>${esc(state.month)} 勤務希望表（未確定）</h2><button id="export" ${busy ? 'disabled' : ''}>Excel出力</button></div><p class="muted">セルを押すと手修正できます。上段が開始、下段が終了です。空欄＝未登録、×＝勤務不可。</p><p class="scroll-hint muted">横にスクロールして末日まで確認できます。</p>${[[1, Math.min(16, count)], [17, count]].map(([from, to]) => `<h3>${from}日〜${to}日</h3><div class="table-scroll"><table class="month-table"><thead><tr><th>名前</th>${Array.from({ length: to - from + 1 }, (_, i) => { const d = i + from, w = dow(d); return `<th class="${w === 0 ? 'sun' : w === 6 ? 'sat' : ''}">${d}<small>${'日月火水木金土'[w]}</small></th>`; }).join('')}</tr></thead><tbody>${state.staff.map(s => `<tr><th scope="row">${esc(s.name)}</th>${Array.from({ length: to - from + 1 }, (_, i) => { const day = from + i, entry = requests(s.id)[day]; return `<td><button class="day-cell" data-id="${esc(s.id)}" data-day="${day}" aria-label="${esc(s.name)} ${day}日 ${esc(caption(entry))}">${!entry ? '&nbsp;' : entry.status === 'unavailable' ? '<span class="off">×</span>' : `<span>${esc(entry.start)}</span><span>${esc(entry.end)}</span>`}</button></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}</section>`;
+  document.querySelector('#export').onclick = () => downloadExcel();
   document.querySelectorAll('.day-cell').forEach(b => b.onclick = () => editCell(b.dataset.id, Number(b.dataset.day)));
 }
 function editCell(id, day) {
@@ -151,6 +159,93 @@ function renderStaffEdit() {
 }
 function renderHistory() {
   content.innerHTML = `<section><h2>取り込み履歴</h2><p class="muted">対象月の記録です。全月合わせて最新100件を保存します。元文章は確認済みの反映時に保存します。</p>${state.history.filter(h => h.month === state.month).map(h => `<article><h3>${esc(h.staffName)} ／ ${esc(new Date(h.at).toLocaleString('ja-JP'))}</h3><p class="history-message">${esc(h.text)}</p><p>${h.entries.map(e => `${e.day}日 ${caption(e)}${e.startDefaulted || e.endDefaulted ? '（基本時間を補完）' : ''}`).map(esc).join(' ／ ') || 'セルを未登録に変更'}</p><hr></article>`).join('') || '<p>まだ反映した内容はありません。</p>'}</section>`;
+}
+function renderCoverage() {
+  const settings = state.coverage?.[state.month] || { required: 0, start: '09:00', end: '18:00' };
+  const rows = summarizeCoverage({ month: state.month, staff: state.staff, requests: state.months[state.month] || {}, settings });
+  const missingStaff = state.staff.filter(s => Object.keys(requests(s.id)).length === 0);
+  content.innerHTML = `<section><h2>${esc(state.month)} 不足・未登録の確認</h2><p>勤務希望をもとにした参考です。確定シフトの人数ではありません。必要人数を設定すると、時間帯ごとの不足候補を表示します。</p><form id="coverage-form" class="small-form"><label>必要人数（0＝未設定）<input name="required" type="number" min="0" max="30" value="${settings.required}" required></label><label>確認する開始<input name="start" type="time" value="${esc(settings.start)}" required></label><label>確認する終了<input name="end" type="time" value="${esc(settings.end)}" required></label><button>この月の確認条件を保存</button></form><p class="feedback">希望が未登録のスタッフ：${missingStaff.length ? missingStaff.map(s => esc(s.name)).join('、') : 'なし'}</p><p class="muted">勤務希望ありは当日の人数、時間内の最少人数は同時に勤務できる人数です。未登録の日は勤務不可と区別しています。必要人数はこの月の全日に共通です。</p><div class="table-scroll"><table><thead><tr><th>日付</th><th>勤務希望あり</th><th>うちベテラン</th><th>未登録</th><th>時間内の最少人数</th><th>不足候補</th></tr></thead><tbody>${rows.map(r => `<tr class="${r.shortages.length ? 'shortage-row' : ''}"><th>${r.day}日（${'日月火水木金土'[dow(r.day)]}）</th><td>${r.availableCount}人</td><td>${r.veteranCount}人</td><td>${r.unreportedCount}人</td><td>${r.minimumAvailable}人</td><td>${settings.required === 0 ? '必要人数を設定してください' : r.shortages.map(s => `${s.start}〜${s.end}：${s.missing}人不足`).join('<br>') || '希望人数は足りています'}</td></tr>`).join('')}</tbody></table></div></section>`;
+  document.querySelector('#coverage-form').onsubmit = e => {
+    e.preventDefault();
+    try {
+      const form = new FormData(e.currentTarget), nextSettings = { required: Number(form.get('required')), start: form.get('start'), end: form.get('end') };
+      summarizeCoverage({ month: state.month, staff: state.staff, requests: state.months[state.month] || {}, settings: nextSettings });
+      save({ ...state, coverage: { ...state.coverage, [state.month]: nextSettings } }); render(); notify('人数を確認する条件を保存しました。');
+    } catch (error) { notify(error.message); }
+  };
+}
+async function downloadExcel(options = {}) {
+  busy = true; render();
+  try {
+    const buffer = await exportExcel(state, options);
+    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const link = document.createElement('a'); link.href = url;
+    const suffix = options.staffId ? `_${state.staff.find(s => s.id === options.staffId)?.name || ''}` : '';
+    link.download = `ポルテ_${state.month}${suffix}_${options.template ? '提出用' : '勤務希望表'}.xlsx`;
+    document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+    notify('Excelファイルを出力しました。勤務希望表・取込用・基本条件・取り込み履歴の4シートです。');
+  } catch (error) { notify(error.message); }
+  finally { busy = false; render(); }
+}
+function parseExcelSheet() {
+  const session = excelSession;
+  session.parsed = null; session.error = ''; session.plan = null;
+  try {
+    session.parsed = parseWorksheetRows(worksheetRows(session.workbook.getWorksheet(session.sheet)), { fallbackMonth: state.month });
+    session.mapping = session.parsed.staff.map(person => ({ sourceName: person.name, targetId: state.staff.find(s => s.name === person.name)?.id || 'new' }));
+  } catch (error) { session.error = error.message; }
+}
+function renderExcel() {
+  const session = excelSession;
+  content.innerHTML = `<section><h2>Excel取り込み・出力</h2><p>Excelファイルはこのブラウザ内で読み書きします。取り込みは、対象月・スタッフ・変更内容を確認してから反映します。</p><h3>Excelへ出力</h3><div class="small-form"><label>出力するスタッフ<select id="export-person"><option value="">全員</option>${state.staff.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></label><button id="export-full" ${busy ? 'disabled' : ''}>現在の希望をExcel出力</button><button class="secondary" id="export-template" ${busy ? 'disabled' : ''}>空の提出用Excelを出力</button></div><p class="muted">提出用ファイルをスタッフに渡し、記入後のファイルを下で集約できます。出力は「勤務希望表」「取込用」「基本条件」「取り込み履歴」の4シートです。</p><h3>Excelから取り込み</h3><p class="muted">.xlsx（5MB以内・1シート1000行／40列以内）。「対象月・名前・日・可否・開始・終了」の一覧、または前半・後半に分かれた開始／終了2段の表に対応します。空欄は既存の希望を消しません。</p><label class="excel-file">Excelファイルを選択<input id="excel-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ${busy ? 'disabled' : ''}></label>${busy ? '<p role="status">Excelを処理中です…</p>' : ''}${session?.workbook ? `<p>選択中：${esc(session.filename)}</p><label>取り込むシート<select id="excel-sheet">${session.workbook.worksheets.map(s => `<option${s.name === session.sheet ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label><p class="muted">「取込用」があれば最初に選択します。「勤務希望表」をExcelで編集した場合は、上のシートも「勤務希望表」に切り替えてください。履歴は取り込み対象にしません。</p>` : ''}<div id="excel-review"></div></section>`;
+  document.querySelector('#export-full').onclick = () => downloadExcel({ staffId: document.querySelector('#export-person').value });
+  document.querySelector('#export-template').onclick = () => downloadExcel({ template: true, staffId: document.querySelector('#export-person').value });
+  document.querySelector('#excel-file').onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
+    excelSession = null; busy = true; render();
+    try {
+      const workbook = await readExcelFile(file);
+      excelSession = { workbook, filename: file.name, sheet: workbook.getWorksheet('取込用')?.name || workbook.worksheets[0].name, conditions: [], conditionsError: '', importConditions: false };
+      try { excelSession.conditions = readStaffConditions(workbook); } catch (error) { excelSession.conditionsError = error.message; }
+      parseExcelSheet();
+    } catch (error) { excelSession = { error: error.message }; }
+    finally { busy = false; render(); }
+  };
+  const selector = document.querySelector('#excel-sheet');
+  if (selector) selector.onchange = e => { session.sheet = e.target.value; parseExcelSheet(); renderExcelReview(); };
+  renderExcelReview();
+}
+function renderExcelReview() {
+  const root = document.querySelector('#excel-review'), session = excelSession; if (!root || !session) return;
+  if (session.error) { root.innerHTML = `<p class="import-errors" role="alert">${esc(session.error)}</p><p>希望表は変更していません。シートを選び直すか、Excelの内容を修正してください。</p>`; return; }
+  if (!session.parsed) return;
+  const parsed = session.parsed;
+  root.innerHTML = `<div class="preview"><h3>取り込み先：${esc(parsed.month)}</h3><p class="feedback">${parsed.month !== state.month ? `画面の対象月（${esc(state.month)}）とは異なります。反映後は${esc(parsed.month)}へ切り替えます。` : '画面と同じ対象月です。'} ファイルを選んだだけでは反映しません。</p>${parsed.warnings.length ? `<ul>${parsed.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}<h3>名前の対応を確認</h3><div class="table-scroll"><table><thead><tr><th>Excelの名前</th><th>取り込み先</th></tr></thead><tbody>${parsed.staff.map((s, i) => `<tr><th>${esc(s.name)}</th><td><select data-import-person="${i}" aria-label="${esc(s.name)}の取り込み先"><option value="new">新しいスタッフとして追加</option><option value="skip">取り込まない</option>${state.staff.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>${session.conditions.length ? `<label><input type="checkbox" id="excel-conditions" ${session.importConditions ? 'checked' : ''}>基本条件も取り込む（${session.conditions.length}名分。該当者の経験・区分・勤務量・曜日・基本時間を更新）</label>` : ''}${session.conditionsError ? `<p class="import-errors">基本条件は取り込めません：${esc(session.conditionsError)}</p>` : ''}<div id="excel-plan"></div></div>`;
+  root.querySelectorAll('[data-import-person]').forEach(select => {
+    const index = Number(select.dataset.importPerson); select.value = session.mapping[index].targetId;
+    select.onchange = () => { session.mapping[index].targetId = select.value; renderExcelPlan(); };
+  });
+  const conditions = document.querySelector('#excel-conditions');
+  if (conditions) conditions.onchange = () => { session.importConditions = conditions.checked; renderExcelPlan(); };
+  renderExcelPlan();
+}
+function renderExcelPlan() {
+  const root = document.querySelector('#excel-plan'), session = excelSession; session.plan = null;
+  try {
+    const plan = buildExcelImportPlan(state, session.parsed, { mapping: session.mapping, conditions: session.conditions, importConditions: session.importConditions, filename: session.filename });
+    session.plan = plan; session.snapshot = JSON.stringify(state);
+    root.innerHTML = `<h3>反映前の確認</h3><p>${plan.peopleCount}名・${plan.entryCount}日分、新しいスタッフ${plan.newStaffCount}名。<strong>既存の希望への上書き${plan.overwrites}件</strong>です。ファイルに書かれていない日はそのまま残します。</p>${staffDraft ? '<p class="import-errors">基本条件に入力途中の内容があります。先に「基本条件を入力」で保存するか、変更を取り消してください。</p>' : ''}<div class="excel-preview"><table><thead><tr><th>スタッフ</th><th>日</th><th>現在</th><th>反映後</th><th>確認</th></tr></thead><tbody>${plan.changes.map(c => `<tr><th>${esc(c.staffName)}</th><td>${c.day}日</td><td>${esc(caption(c.previous))}</td><td>${esc(caption(c.next))}</td><td>${c.next.startDefaulted || c.next.endDefaulted ? '基本時間で補完' : ''}${c.previous ? ' ／ 上書き' : ''}</td></tr>`).join('')}</tbody></table></div><div class="actions"><label><input type="checkbox" id="excel-confirm">対象月・名前・時刻・上書き内容を確認しました</label><button id="excel-apply" disabled>確認した内容をまとめて反映</button></div><p class="muted">取り込み履歴にファイル名と反映内容を保存します。</p>`;
+    document.querySelector('#excel-confirm').onchange = e => { document.querySelector('#excel-apply').disabled = !e.target.checked || !!staffDraft; };
+    document.querySelector('#excel-apply').onclick = () => {
+      try {
+        if (!document.querySelector('#excel-confirm').checked || staffDraft) throw new Error('確認と、入力中の基本条件の保存・取り消しを済ませてください。');
+        if (session.snapshot !== JSON.stringify(state)) throw new Error('希望表が変わりました。取り込み内容を確認し直してください。');
+        save(plan.nextState); monthInput.value = state.month; candidate = null; excelSession = null;
+        if (!state.staff.some(s => s.id === selectedStaff)) selectedStaff = state.staff[0].id;
+        view = 'month'; render(); notify(`${plan.peopleCount}名・${plan.entryCount}日分をExcelから反映しました。`);
+      } catch (error) { notify(error.message); }
+    };
+  } catch (error) { root.innerHTML = `<p class="import-errors" role="alert">${esc(error.message)}</p><p>希望表は変更していません。名前の対応やExcelの内容を確認してください。</p>`; }
 }
 monthInput.onchange = () => { try { daysInMonth(monthInput.value); save({ ...state, month: monthInput.value }); candidate = null; render(); } catch (e) { monthInput.value = state.month; notify(e.message); } };
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => { if (busy) { notify('読み取りが終わってから画面を切り替えてください。'); return; } try { if (view === 'intake' && candidate && !candidate.needsClarification) candidate.entries = readPreviewEntries(); view = b.dataset.view; render(); } catch (e) { notify(e.message); } });
