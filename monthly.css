@@ -1,0 +1,35 @@
+input[type=month], input[type=text], input[type=time] { font: inherit; padding: 7px; border: 1px solid #a9b7c6; border-radius: 4px; max-width: 100%; }
+footer { padding: 8px 0 24px; font-size: 13px; } a { color: #2457a7; }
+.example-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.example-buttons button { font-size: 13px; padding: 5px 10px; }
+.preview { margin-top: 24px; padding-top: 20px; border-top: 1px solid #d3dbe5; }
+.preview th, .preview td { white-space: nowrap; }
+.preview input[type=time] { width: 110px; }
+.inferred { color: #865b03; font-size: 12px; }
+.conflict { color: #a02525; font-size: 12px; }
+.month-table { min-width: 1000px; table-layout: fixed; font-size: 12px; }
+.month-table th:first-child { width: 90px; }
+.month-table th, .month-table td { text-align: center; padding: 2px; }
+.month-table thead th { padding: 6px 2px; }
+.month-table th small { display: block; }
+.month-table tbody tr:nth-child(even) td { background: #f1f1f1; }
+.month-table th.sat { background: #e5edfb; }.month-table th.sun { background: #fde7e7; }
+.day-cell { width: 100%; min-height: 50px; font-size: 12px; line-height: 1.45; padding: 3px 0; color: #202b36; background: transparent; border: none; border-radius: 0; }
+.day-cell:hover { background: #e3edfc; }
+.day-cell .off { color: #a02525; }
+.day-cell span { display: block; }
+.staff-table { min-width: 1050px; font-size: 13px; }
+.staff-table th, .staff-table td { padding: 7px; }
+.staff-table input[type=text] { width: 100px; }
+.staff-table input[type=time] { width: 108px; }
+.staff-table select { padding: 5px; }
+.weekday-checks { display: flex; gap: 8px; white-space: nowrap; }
+.weekday-checks label { display: flex; flex-direction: column; align-items: center; }
+.small-form { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+.small-form label { display: flex; flex-direction: column; gap: 5px; }
+.history-message { white-space: pre-wrap; background: #f5f7fa; padding: 10px; font-size: 13px; }
+.scroll-hint { display: none; }
+@media(max-width:1100px) { .scroll-hint { display: block; } }
+.staff-read-table { min-width: 660px; }
+.staff-read-table th, .staff-read-table td { white-space: nowrap; }
+.staff-read-table tbody tr:nth-child(even) td { background: #f6f7f9; }
