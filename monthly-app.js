@@ -14,12 +14,13 @@ const initial = () => ({ version: 1, month: '2026-10', staff: ['スタッフA', 
 let state = initial();
 try { const saved = JSON.parse(localStorage.getItem(KEY)); if (saved?.version === 1 && Array.isArray(saved.staff) && saved.staff.length && saved.months && Array.isArray(saved.history)) { daysInMonth(saved.month); state = saved; } } catch { /* Start with a clean demo if the saved format cannot be read. */ }
 let view = 'month', selectedStaff = state.staff[0].id, draft = '', candidate = null, busy = false, timer, staffDraft = null;
-let excelSession = null, period = 0, applied = null;
+let excelSession = null, period = 0, applied = null, demoMode = false;
 const intakeDrafts = new Map();
+const demoDrafts = new Map();
 const draftKey = () => `${state.month}/${selectedStaff}`;
-function keepIntake() { intakeDrafts.set(draftKey(), { draft, candidate }); }
-function restoreIntake() { ({ draft, candidate } = intakeDrafts.get(draftKey()) || { draft: '', candidate: null }); applied = null; }
-function selectPerson(id) { keepIntake(); selectedStaff = id; restoreIntake(); view = 'intake'; render(); }
+function keepIntake() { (demoMode ? demoDrafts : intakeDrafts).set(draftKey(), { draft, candidate }); }
+function restoreIntake() { ({ draft, candidate } = (demoMode ? demoDrafts : intakeDrafts).get(draftKey()) || { draft: '', candidate: null }); applied = null; }
+function selectPerson(id) { keepIntake(); selectedStaff = id; demoMode = false; restoreIntake(); view = 'intake'; render(); }
 function go(nextView) { if (busy) return; keepIntake(); view = nextView; render(); document.querySelector('.app-menu').open = false; }
 const coverageSettings = () => state.coverage?.[state.month] || { required: 2, start: '09:00', end: '18:00' };
 const coverageRows = () => summarizeCoverage({ month: state.month, staff: state.staff, requests: state.months[state.month] || {}, settings: coverageSettings() });
@@ -56,7 +57,10 @@ function render() {
 }
 function renderIntake() {
   const s = member();
-  content.innerHTML = `<section class="intake-view"><div class="section-heading"><h2>希望を入力</h2><span class="muted">${Number(state.month.split('-')[1])}月</span></div><div class="form-top"><label>スタッフ<select id="intake-staff" ${busy ? 'disabled' : ''}>${state.staff.map(p => `<option value="${esc(p.id)}"${p.id === s.id ? ' selected' : ''}>${esc(p.name)}${Object.keys(requests(p.id)).length ? ' · 登録あり' : ''}</option>`).join('')}</select></label><span class="muted">基本 ${esc(s.start)}–${esc(s.end)}</span></div>${applied ? `<div class="intake-success" role="status"><strong>${esc(applied.name)} · ${applied.count}日分を保存しました</strong><div class="actions"><button id="next-person" ${state.staff.length < 2 ? 'hidden' : ''}>次のスタッフへ</button><button class="secondary" id="view-saved">シフト表を見る</button></div></div>` : ''}<label for="request-text">届いたメッセージを貼り付け</label><textarea id="request-text" maxlength="1500" placeholder="1,3,4でー&#10;10日は13時から17時" ${busy ? 'disabled' : ''}>${esc(draft)}</textarea><div class="actions intake-actions"><button id="parse" ${busy ? 'disabled' : ''}>${busy ? '読み取り中…' : '内容を確認する'}</button><button class="secondary" id="from-weekdays" ${busy || !s.weekdays.length ? 'disabled' : ''} title="スタッフに登録した基本曜日から候補を作ります">基本曜日から入力</button></div><details class="help-details"><summary>入力例・読み取りについて</summary><div class="example-buttons">${['1,3,4でー', '10,17,25,31でお願いします！！', '3日は10時から16時、4日は15時から', '毎週火曜と木曜に入れます。15日は休みです。'].map((t, i) => `<button class="secondary" data-example="${i}" ${busy ? 'disabled' : ''}>${esc(t)}</button>`).join('')}</div><p>時刻の指定がない日は基本時間を使います。</p><span class="muted" id="ai-status">${PUBLIC_DEMO ? '公開版は対応書式の簡易読み取りです。AIは使いません。' : '接続状況を確認中'}</span></details><div id="preview"></div></section>`;
+  const dmPanel = `<div class="dm-demo${demoMode ? ' is-active' : ''}"><div><div class="dm-demo-title"><span class="draft-badge">デモ</span><strong>Instagram DMの取り込み体験</strong></div><p>${demoMode ? `${esc(s.name)}からのテストDM · ${esc(state.month)}の希望` : '選択中のスタッフから届くサンプルの希望を読み取ります。'}</p><p class="muted">アカウント不要・Instagramとの送受信はありません。保存すると、このブラウザの希望表に反映されます。</p></div><button class="secondary" id="${demoMode ? 'leave-dm-demo' : 'receive-test-dm'}" ${busy ? 'disabled' : ''}>${demoMode ? '通常の入力に戻る' : 'テストDMを受信'}</button></div>`;
+  content.innerHTML = `<section class="intake-view"><div class="section-heading"><h2>希望を入力</h2><span class="muted">${Number(state.month.split('-')[1])}月</span></div><div class="form-top"><label>スタッフ<select id="intake-staff" ${busy ? 'disabled' : ''}>${state.staff.map(p => `<option value="${esc(p.id)}"${p.id === s.id ? ' selected' : ''}>${esc(p.name)}${Object.keys(requests(p.id)).length ? ' · 登録あり' : ''}</option>`).join('')}</select></label><span class="muted">基本 ${esc(s.start)}–${esc(s.end)}</span></div>${dmPanel}${applied ? `<div class="intake-success" role="status"><strong>${applied.demo ? 'テストDM · ' : ''}${esc(applied.name)} · ${applied.count}日分を保存しました</strong><div class="actions"><button id="next-person" ${state.staff.length < 2 ? 'hidden' : ''}>次のスタッフへ</button><button class="secondary" id="view-saved">シフト表を見る</button></div></div>` : ''}<label for="request-text">${demoMode ? '受信したテストDM（編集できます）' : '届いたメッセージを貼り付け'}</label><textarea id="request-text" maxlength="1500" placeholder="1,3,4でー&#10;10日は13時から17時" ${busy ? 'disabled' : ''}>${esc(draft)}</textarea><div class="actions intake-actions"><button id="parse" ${busy ? 'disabled' : ''}>${busy ? '読み取り中…' : '内容を確認する'}</button><button class="secondary" id="from-weekdays" ${demoMode ? 'hidden' : ''} ${busy || !s.weekdays.length ? 'disabled' : ''} title="スタッフに登録した基本曜日から候補を作ります">基本曜日から入力</button></div><details class="help-details" ${demoMode ? 'hidden' : ''}><summary>入力例・読み取りについて</summary><div class="example-buttons">${['1,3,4でー', '10,17,25,31でお願いします！！', '3日は10時から16時、4日は15時から', '毎週火曜と木曜に入れます。15日は休みです。'].map((t, i) => `<button class="secondary" data-example="${i}" ${busy ? 'disabled' : ''}>${esc(t)}</button>`).join('')}</div><p>時刻の指定がない日は基本時間を使います。</p><span class="muted" id="ai-status">${PUBLIC_DEMO ? '公開版は対応書式の簡易読み取りです。AIは使いません。' : '接続状況を確認中'}</span></details><div id="preview"></div></section>`;
+  if (demoMode) document.querySelector('#leave-dm-demo').onclick = leaveDmDemo;
+  else document.querySelector('#receive-test-dm').onclick = receiveTestDm;
   document.querySelector('#intake-staff').onchange = e => selectPerson(e.target.value);
   document.querySelector('#request-text').oninput = e => { draft = e.target.value; candidate = null; applied = null; keepIntake(); document.querySelector('#preview').innerHTML = ''; document.querySelector('.intake-success')?.remove(); };
   document.querySelectorAll('[data-example]').forEach(b => b.onclick = () => { draft = b.textContent; candidate = null; applied = null; keepIntake(); renderIntake(); });
@@ -74,7 +78,7 @@ function renderIntake() {
 }
 async function parse() {
   if (!draft.trim()) { notify('勤務希望の文章を入力してください。'); return; }
-  const s = member(), snapshot = stamp(), text = draft;
+  const s = member(), snapshot = stamp(), text = draft, source = demoMode ? 'instagram-demo' : 'message';
   busy = true; candidate = null; applied = null; render();
   try {
     let result;
@@ -85,15 +89,28 @@ async function parse() {
       result = await response.json(); if (!response.ok) throw new Error(result.error || '読み取りに失敗しました。');
     }
     if (snapshot !== stamp() || draft !== text) throw new Error('条件が変わりました。もう一度読み取ってください。');
-    candidate = { ...result, snapshot, text, source: 'message' };
+    candidate = { ...result, snapshot, text, source };
   } catch (e) { notify(e.message); }
   finally { busy = false; keepIntake(); render(); document.querySelector('#preview')?.scrollIntoView({ block: 'nearest' }); }
+}
+function receiveTestDm() {
+  if (busy) return;
+  keepIntake(); demoMode = true; restoreIntake();
+  if (!draft.trim() && !candidate) draft = '3日は10時から16時\n4日は15時から18時\n5日は入れません';
+  keepIntake();
+  render();
+  if (!candidate) parse();
+}
+function leaveDmDemo() {
+  if (busy) return;
+  keepIntake(); demoMode = false; restoreIntake(); render();
 }
 function renderPreview() {
   const el = document.querySelector('#preview'); if (!el || !candidate) return;
   const c = candidate;
-  if (c.needsClarification) { el.innerHTML = `<div class="preview"><h2>確認が必要です</h2><p class="feedback">${esc(c.explanation)}</p><p>上の文章を補足して、もう一度読み取ってください。</p></div>`; return; }
-  el.innerHTML = `<div class="preview"><div class="section-heading"><h3>読み取り結果 · ${c.entries.length}日分</h3><span class="muted">まだ保存されていません</span></div><div class="preview-cards">${c.entries.map((e, index) => `<div class="preview-card" data-preview-index="${index}"><label class="preview-include"><input type="checkbox" aria-label="${e.day}日を反映" ${e.included === false ? '' : 'checked'}><span>反映</span></label><label class="preview-date"><span class="sr-only">日付</span><input type="number" min="1" max="${daysInMonth(state.month)}" value="${e.day}" aria-label="候補${index + 1}の日付">日</label><select aria-label="${e.day}日の可否"><option value="available"${e.status === 'available' ? ' selected' : ''}>勤務希望</option><option value="unavailable"${e.status === 'unavailable' ? ' selected' : ''}>勤務不可</option></select><div class="preview-time"><input type="time" aria-label="${e.day}日の開始" data-part="start" value="${esc(e.start)}" ${e.status === 'unavailable' ? 'disabled' : ''}><span>–</span><input type="time" aria-label="${e.day}日の終了" data-part="end" value="${esc(e.end)}" ${e.status === 'unavailable' ? 'disabled' : ''}></div><div class="preview-note">${e.startDefaulted || e.endDefaulted ? '<span class="inferred">基本時間</span>' : ''}${requests(selectedStaff)[e.day] ? `<span class="conflict">上書き前：${esc(caption(requests(selectedStaff)[e.day]))}</span>` : ''}</div></div>`).join('')}</div><p class="muted">反映する日だけチェック。日付と時刻は直接直せます。</p><button id="apply">この内容を保存</button><details class="help-details"><summary>読み取りの詳細</summary><p>${esc(c.explanation)}</p></details></div>`;
+  const sourceLabel = c.source === 'instagram-demo' ? '<p class="dm-source">テストDMの読み取り結果 · 保存前に日付と時刻を確認してください。</p>' : '';
+  if (c.needsClarification) { el.innerHTML = `<div class="preview"><h2>確認が必要です</h2>${sourceLabel}<p class="feedback">${esc(c.explanation)}</p><p>上の文章を補足して、もう一度読み取ってください。</p></div>`; return; }
+  el.innerHTML = `<div class="preview"><div class="section-heading"><h3>読み取り結果 · ${c.entries.length}日分</h3><span class="muted">まだ保存されていません</span></div>${sourceLabel}<div class="preview-cards">${c.entries.map((e, index) => `<div class="preview-card" data-preview-index="${index}"><label class="preview-include"><input type="checkbox" aria-label="${e.day}日を反映" ${e.included === false ? '' : 'checked'}><span>反映</span></label><label class="preview-date"><span class="sr-only">日付</span><input type="number" min="1" max="${daysInMonth(state.month)}" value="${e.day}" aria-label="候補${index + 1}の日付">日</label><select aria-label="${e.day}日の可否"><option value="available"${e.status === 'available' ? ' selected' : ''}>勤務希望</option><option value="unavailable"${e.status === 'unavailable' ? ' selected' : ''}>勤務不可</option></select><div class="preview-time"><input type="time" aria-label="${e.day}日の開始" data-part="start" value="${esc(e.start)}" ${e.status === 'unavailable' ? 'disabled' : ''}><span>–</span><input type="time" aria-label="${e.day}日の終了" data-part="end" value="${esc(e.end)}" ${e.status === 'unavailable' ? 'disabled' : ''}></div><div class="preview-note">${e.startDefaulted || e.endDefaulted ? '<span class="inferred">基本時間</span>' : ''}${requests(selectedStaff)[e.day] ? `<span class="conflict">上書き前：${esc(caption(requests(selectedStaff)[e.day]))}</span>` : ''}</div></div>`).join('')}</div><p class="muted">反映する日だけチェック。日付と時刻は直接直せます。</p><button id="apply">この内容を保存</button><details class="help-details"><summary>読み取りの詳細</summary><p>${esc(c.explanation)}</p></details></div>`;
   el.querySelectorAll('[data-preview-index]').forEach(row => {
     const remember = () => {
       const entry = c.entries[Number(row.dataset.previewIndex)];
@@ -110,7 +127,16 @@ function renderPreview() {
     try {
       if (c.snapshot !== stamp()) throw new Error('条件が変わりました。もう一度読み取ってください。');
       const entries = readPreviewEntries();
-      commitEntries(selectedStaff, entries, c.source, c.text); applied = { name: member().name, count: entries.length }; candidate = null; draft = ''; keepIntake(); period = Math.floor((entries[0].day - 1) / 7); render(); document.querySelector('.intake-success').scrollIntoView({ block: 'nearest' });
+      const normalCandidateIsCurrent = demoMode && intakeDrafts.get(draftKey())?.candidate?.snapshot === c.snapshot;
+      commitEntries(selectedStaff, entries, c.source, c.text);
+      candidate = null; draft = ''; keepIntake();
+      if (demoMode) {
+        demoMode = false; restoreIntake();
+        // Only this demo save changed the baseline. Keep edits and show the latest overwrite warnings.
+        if (normalCandidateIsCurrent && candidate) candidate.snapshot = stamp();
+      }
+      applied = { name: member().name, count: entries.length, demo: c.source === 'instagram-demo' };
+      period = Math.floor((entries[0].day - 1) / 7); render(); document.querySelector('.intake-success').scrollIntoView({ block: 'nearest' });
     } catch (e) { notify(e.message); }
   };
 }
@@ -197,7 +223,7 @@ function renderStaffEdit() {
 }
 function renderHistory() {
   const entries = state.history.filter(h => h.month === state.month);
-  content.innerHTML = `<section><h2>履歴</h2><p class="muted">${esc(state.month)} · ${entries.length}件</p>${entries.map(h => `<details class="history-entry"><summary><strong>${esc(h.staffName)}</strong><span>${esc(new Date(h.at).toLocaleString('ja-JP'))}</span><span>${h.entries.length ? `${h.entries.length}日分` : '未登録に変更'}</span></summary><p class="history-message">${esc(h.text)}</p><p>${h.entries.map(e => `${e.day}日 ${caption(e)}${e.startDefaulted || e.endDefaulted ? '（基本時間）' : ''}`).map(esc).join(' ／ ') || 'セルを未登録に変更'}</p></details>`).join('') || '<p>まだ履歴はありません。</p>'}<details class="help-details"><summary>保存する内容</summary><p>反映した元文章と変更内容を、全月合わせて最新100件まで保存します。</p></details></section>`;
+  content.innerHTML = `<section><h2>履歴</h2><p class="muted">${esc(state.month)} · ${entries.length}件</p>${entries.map(h => `<details class="history-entry"><summary><strong>${esc(h.staffName)}</strong><span>${esc(new Date(h.at).toLocaleString('ja-JP'))}</span><span>${h.entries.length ? `${h.entries.length}日分` : '未登録に変更'}</span>${h.source === 'instagram-demo' ? '<span class="draft-badge">テストDM</span>' : ''}</summary><p class="history-message">${esc(h.text)}</p><p>${h.entries.map(e => `${e.day}日 ${caption(e)}${e.startDefaulted || e.endDefaulted ? '（基本時間）' : ''}`).map(esc).join(' ／ ') || 'セルを未登録に変更'}</p></details>`).join('') || '<p>まだ履歴はありません。</p>'}<details class="help-details"><summary>保存する内容</summary><p>反映した元文章と変更内容を、全月合わせて最新100件まで保存します。</p></details></section>`;
 }
 function renderCoverage() {
   const settings = coverageSettings();
@@ -296,13 +322,13 @@ function renderExcelPlan() {
         if (session.snapshot !== JSON.stringify(state)) throw new Error('希望表が変わりました。取り込み内容を確認し直してください。');
         keepIntake(); save(plan.nextState); monthInput.value = state.month; excelSession = null;
         if (!state.staff.some(s => s.id === selectedStaff)) selectedStaff = state.staff[0].id;
-        restoreIntake(); period = 0; view = 'month'; render(); notify(`${plan.peopleCount}名・${plan.entryCount}日分をExcelから反映しました。`);
+        demoMode = false; restoreIntake(); period = 0; view = 'month'; render(); notify(`${plan.peopleCount}名・${plan.entryCount}日分をExcelから反映しました。`);
       } catch (error) { notify(error.message); }
     };
   } catch (error) { root.innerHTML = `<p class="import-errors" role="alert">${esc(error.message)}</p><p>希望表は変更していません。名前の対応やExcelの内容を確認してください。</p>`; }
 }
 function changeMonth(value) {
-  try { daysInMonth(value); keepIntake(); save({ ...state, month: value }); monthInput.value = state.month; restoreIntake(); period = 0; render(); }
+  try { daysInMonth(value); keepIntake(); save({ ...state, month: value }); monthInput.value = state.month; demoMode = false; restoreIntake(); period = 0; render(); }
   catch (e) { monthInput.value = state.month; notify(e.message); }
 }
 monthInput.onchange = () => changeMonth(monthInput.value);

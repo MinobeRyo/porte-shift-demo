@@ -184,6 +184,14 @@ header h1 span { font-size: 15px; font-weight: 400; color: #647080; margin-left:
 .intake-success { background: #eef7f1; padding: 16px; border-radius: 8px; margin-bottom: 24px; color: #34694b; }
 .intake-success .actions { margin-top: 12px; }
 .intake-success strong { font-size: 14px; }
+.dm-demo { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #dce5ef; border-radius: 8px; background: #f6f8fb; }
+.dm-demo > div { flex: 1 1 260px; min-width: 0; }
+.dm-demo-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; }
+.dm-demo-title .draft-badge { margin: 0; }
+.dm-demo p { margin: 6px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.dm-demo button { font-size: 13px; }
+.dm-demo.is-active { background: #eef4fb; border-color: #c7d8ec; }
+.dm-source { color: #305d84; font-size: 13px; }
 .preview-cards { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
 .preview-card { display: grid; grid-template-columns: 54px 78px 110px 1fr; gap: 10px; align-items: center; border: 1px solid #e0e6ed; border-radius: 8px; padding: 12px; }
 .preview-include { display: flex; gap: 5px; align-items: center; font-size: 11px; color: #768190; }
