@@ -6,28 +6,28 @@
   <meta name="description" content="勤務希望とスタッフ基本条件を入力・確認できる仮公開デモ。">
   <title>ポルテ｜文章から月間希望表へ</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="monthly.css">
+  <link rel="stylesheet" href="style.css?v=4feda00f53eb">
+  <link rel="stylesheet" href="monthly.css?v=be3ae3bbb6d2">
 </head>
 <body>
   <header>
-    <div><h1>ポルテ 勤務希望の取り込み</h1><p>文章を読み取る → 内容を確認する → 月間希望表に反映</p></div>
+    <div><h1>ポルテ シフト管理</h1></div>
     <label>対象年月 <input id="target-month" type="month" min="2020-01" max="2100-12" required></label>
   </header>
-  <aside class="notice" id="usage-note">これは未確定の「勤務希望表」です。日付だけの希望は基本9:00〜18:00で補完します。空欄は未登録、×は勤務不可です。日付の列挙は規則で処理し、その他の文章はこのPCのQwen 3.5で読み取ります。入力はブラウザ内に保存します。</aside>
+  <aside class="demo-note"><span id="usage-note">勤務希望の下書き · このブラウザに保存</span><details class="demo-details"><summary>このデモについて</summary><p id="demo-description">対応する文章は規則で、それ以外はこのPCのQwenで読み取ります。入力は他の端末と共有されません。確定シフトではありません。</p></details></aside>
   <nav aria-label="操作メニュー">
-    <button data-view="intake" aria-current="page">文章から取り込み</button>
-    <button data-view="month">月間希望表</button>
-    <button data-view="coverage">不足・未登録を確認</button>
-    <button data-view="excel">Excel取り込み・出力</button>
-    <button data-view="staff">基本条件を見る</button>
-    <button data-view="staff-edit">基本条件を入力</button>
-    <button data-view="history">取り込み履歴</button>
+    <button data-view="intake" aria-current="page">希望を入力</button>
+    <button data-view="month">希望表</button>
+    <button data-view="coverage">人数チェック</button>
+    <button data-view="excel">Excel</button>
+    <button data-view="staff">スタッフ</button>
+    <button data-view="staff-edit">スタッフ編集</button>
+    <button data-view="history">履歴</button>
   </nav>
   <main id="content"></main>
   <p id="message" role="status" aria-live="polite"></p>
   <dialog id="modal" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
-  <footer>GitHub Pages 仮公開デモ ／ 入力はこのブラウザ内に保存されます。</footer>
-  <script type="module" src="monthly-app.js"></script>
+  <footer>Patisserie ポルテ · 仮公開デモ</footer>
+  <script type="module" src="monthly-app.js?v=9d635b7f46a3"></script>
 </body>
 </html>
