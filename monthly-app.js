@@ -165,7 +165,7 @@ function renderHistory() {
   content.innerHTML = `<section><h2>履歴</h2><p class="muted">${esc(state.month)} · ${entries.length}件</p>${entries.map(h => `<details class="history-entry"><summary><strong>${esc(h.staffName)}</strong><span>${esc(new Date(h.at).toLocaleString('ja-JP'))}</span><span>${h.entries.length ? `${h.entries.length}日分` : '未登録に変更'}</span></summary><p class="history-message">${esc(h.text)}</p><p>${h.entries.map(e => `${e.day}日 ${caption(e)}${e.startDefaulted || e.endDefaulted ? '（基本時間）' : ''}`).map(esc).join(' ／ ') || 'セルを未登録に変更'}</p></details>`).join('') || '<p>まだ履歴はありません。</p>'}<details class="help-details"><summary>保存する内容</summary><p>反映した元文章と変更内容を、全月合わせて最新100件まで保存します。</p></details></section>`;
 }
 function renderCoverage() {
-  const settings = state.coverage?.[state.month] || { required: 0, start: '09:00', end: '18:00' };
+  const settings = state.coverage?.[state.month] || { required: 2, start: '09:00', end: '18:00' };
   const rows = summarizeCoverage({ month: state.month, staff: state.staff, requests: state.months[state.month] || {}, settings });
   const missingStaff = state.staff.filter(s => Object.keys(requests(s.id)).length === 0);
   const shortageDays = rows.filter(row => row.shortages.length);
