@@ -6,23 +6,26 @@
   <meta name="description" content="勤務希望とスタッフ基本条件を入力・確認できる仮公開デモ。">
   <title>ポルテ｜文章から月間希望表へ</title>
   <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
   <link rel="stylesheet" href="style.css?v=4feda00f53eb">
-  <link rel="stylesheet" href="monthly.css?v=396cc91cca39">
+  <link rel="stylesheet" href="monthly.css?v=80ede9931cb7">
 </head>
 <body>
   <header>
     <h1>ポルテ <span>シフト管理</span></h1>
     <div class="month-switch"><button id="previous-month" class="secondary" aria-label="前の月">‹</button><label><span class="sr-only">対象年月</span><input id="target-month" type="month" min="2020-01" max="2100-12" required></label><button id="next-month" class="secondary" aria-label="次の月">›</button></div>
   </header>
-  <div class="app-navigation"><nav aria-label="操作メニュー">
-    <button data-view="month" aria-current="page">シフト表</button>
-    <button data-view="intake">希望を入力</button>
-    <button data-view="staff">スタッフ</button>
-  </nav><details class="app-menu"><summary>その他</summary><div><button data-view="excel">Excel入出力</button><button data-view="history">変更履歴</button><details class="demo-details"><summary>このデモについて</summary><p id="usage-note">勤務希望の下書き · このブラウザに保存</p><p id="demo-description">対応する文章は規則で、それ以外はこのPCのQwenで読み取ります。入力は他の端末と共有されません。確定シフトではありません。</p></details></div></details></div>
+  <div class="app-navigation"><span class="app-mark" aria-hidden="true">ポ</span><nav aria-label="操作メニュー">
+    <button data-view="dm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>DM</span><span id="dm-badge" class="nav-badge" hidden></span></button>
+    <button data-view="month"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>シフト表</span></button>
+    <button data-view="staff"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17.5" cy="9.5" r="2.4"/><path d="M17 14.6c2.4.2 4.2 1.9 4.2 4.4"/></svg><span>スタッフ</span></button>
+  </nav><details class="app-menu"><summary>その他</summary><div><button data-view="intake">文章から入力</button><button data-view="excel">Excel入出力</button><button data-view="history">変更履歴</button><details class="demo-details"><summary>このデモについて</summary><p id="usage-note">勤務希望の下書き · このブラウザに保存</p><p id="demo-description">対応する文章は規則で、それ以外はこのPCのQwenで読み取ります。入力は他の端末と共有されません。確定シフトではありません。</p></details></div></details></div>
   <main id="content"></main>
   <p id="message" role="status" aria-live="polite"></p>
   <dialog id="modal" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
   <footer>Patisserie ポルテ · 仮公開デモ</footer>
-  <script type="module" src="monthly-app.js?v=2f84e7d6c13d"></script>
+  <script type="module" src="monthly-app.js?v=6f25d65c89f4"></script>
 </body>
 </html>
