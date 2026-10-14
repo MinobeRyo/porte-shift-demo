@@ -441,3 +441,28 @@ button.dm-cell:hover { filter: brightness(.96); box-shadow: 0 0 0 2px var(--line
 .legend-chip { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-right: 3px; }
 .dm-short { white-space: nowrap; }
 .dm-short.is-partial { font-weight: 500; }
+
+/* Instagram connection */
+.dm-unlinked { margin: 4px 8px 0; padding: 12px; border: 1px dashed var(--berry); border-radius: 14px; background: var(--berry-soft); }
+.dm-unlinked h3 { margin: 0 0 8px; font-size: 13px; color: var(--berry-ink); }
+.dm-unlinked h3 span { font-weight: 400; }
+.dm-unlinked-item { padding: 8px 0; border-top: 1px solid #EBCBD3; }
+.dm-unlinked-item p { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.dm-unlinked-item label { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 12px; color: var(--ink-soft); }
+.dm-unlinked > .muted { margin: 6px 0 0; font-size: 11px; }
+.instagram-view { max-width: 760px; margin: 0 auto 18px; }
+.ig-form { display: flex; flex-direction: column; gap: 14px; margin: 16px 0; }
+.ig-form label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.ig-form input { padding: 10px; border: 1px solid var(--line-strong); }
+#ig-status:empty { display: none; }
+.ig-links { list-style: none; padding: 0; }
+.ig-links li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ig-links small { margin-right: auto; }
+
+/* Staff basic conditions found in a DM */
+.dm-profile { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.dm-profile h4 { margin: 0 0 6px; font-size: 14px; color: var(--berry-ink); }
+.dm-profile-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 12px; margin-bottom: 6px; }
+.dm-profile-label { flex: 0 0 64px; font-size: 13px; font-weight: 700; }
+.dm-profile-change { font-size: 14px; overflow-wrap: anywhere; }
+.dm-profile > .muted { margin: 6px 0 0; font-size: 12px; }

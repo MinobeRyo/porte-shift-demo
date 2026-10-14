@@ -5,6 +5,7 @@ import { summarizeCoverage, describeShortage } from './coverage.js';
 import { readExcelFile, worksheetRows, readStaffConditions, exportExcel } from './excel-workbook.js';
 import { parseWorksheetRows } from './excel-core.js';
 import { buildExcelImportPlan } from './excel-plan.js';
+import { PROFILE_FIELDS, normalizeStaffProfile, parseStaffProfileRules } from './staff-profile.js';
 
 const KEY = PUBLIC_DEMO ? 'porte-pages-demo-v1' : 'porte-monthly-requests-v1';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,6 +23,14 @@ if (!state.inbox || typeof state.inbox !== 'object' || Array.isArray(state.inbox
   const targets = [waiting[0], waiting.at(-1)].filter((s, i, list) => s && list.indexOf(s) === i);
   state.inbox = { [state.month]: Object.fromEntries(targets.map((s, i) => [s.id, [{ id: `sample-${i}`, at: minutesAgo(90 - i * 60), text: samples[i % samples.length], status: 'pending', demo: true }]])) };
 }
+// Instagram DMs that arrived from senders not yet linked to a staff member, and ids already taken in.
+if (!Array.isArray(state.igUnlinked)) state.igUnlinked = [];
+if (!Array.isArray(state.igSeen)) state.igSeen = [];
+// The receiver URL and manager key stay in this browser only, apart from the shared demo data.
+const IG_KEY = `${KEY}-instagram`;
+let igConnection = { url: '', key: '', since: '' };
+try { igConnection = { ...igConnection, ...JSON.parse(localStorage.getItem(IG_KEY)) }; } catch { /* Not connected yet. */ }
+let igBusy = false, igLastFetch = 0;
 let view = 'dm', selectedStaff = state.staff[0].id, draft = '', candidate = null, busy = false, timer, staffDraft = null;
 let excelSession = null, period = 0, applied = null, dmWeek = 0;
 const intakeDrafts = new Map();
@@ -33,7 +42,7 @@ function keepIntake() { intakeDrafts.set(draftKey(), { draft, candidate }); }
 function restoreIntake() { ({ draft, candidate } = intakeDrafts.get(draftKey()) || { draft: '', candidate: null }); applied = null; }
 function selectPerson(id) { keepIntake(); selectedStaff = id; restoreIntake(); view = 'intake'; render(); }
 function openConversation(id) { if (busy) return; keepIntake(); selectedStaff = id; restoreIntake(); const c = dmCandidates.get(draftKey()); if (c && !c.needsClarification) dmWeek = weekOf(c); view = 'dm'; render(); }
-function go(nextView) { if (busy) return; keepIntake(); view = nextView; render(); document.querySelector('.app-menu').open = false; }
+function go(nextView) { if (busy) return; keepIntake(); view = nextView; render(); document.querySelector('.app-menu').open = false; if (view === 'dm' && igConnection.url && Date.now() - igLastFetch > 60000) fetchInstagram(true); }
 const coverageSettings = () => state.coverage?.[state.month] || { required: 2, start: '09:00', end: '18:00' };
 // Full-day shortages use the strong colour; shortages limited to some hours use a lighter one.
 function shortageText(info, compact = false) {
@@ -70,6 +79,7 @@ function render() {
   monthInput.disabled = busy;
   document.querySelectorAll('[data-view], #previous-month, #next-month').forEach(b => b.disabled = busy);
   if (view === 'dm') renderDm();
+  if (view === 'instagram') renderInstagram();
   if (view === 'intake') renderIntake();
   if (view === 'month') renderMonth();
   if (view === 'staff') renderStaff();
@@ -167,7 +177,7 @@ function commitEntries(id, entries, source, text) {
 }
 // DM screen: received messages, reading results, and the week's request table side by side.
 // Test DMs only reproduce receiving on screen; nothing is sent to or read from Instagram.
-const SAMPLE_DMS = ['3日は10時から16時\n4日は15時から18時\n5日は入れません', '1,3,4でー\n10,17,25,31でお願いします！！', '毎週火曜と木曜に入れます。\n15日は休みです。'];
+const SAMPLE_DMS = ['3日は10時から16時\n4日は15時から18時\n5日は入れません', '大学2年です。未経験ですが、土日中心に多めに入りたいです。\n10日と17日は10時から17時でお願いします', '毎週火曜と木曜に入れます。\n15日は休みです。'];
 const AVATAR_COLORS = ['#3D6B8E', '#6B5B95', '#2F7D6D', '#8A5A2B', '#7A4E6E', '#4F6B3A'];
 const thread = id => state.inbox[state.month]?.[id] || [];
 const pendingMessages = id => thread(id).filter(m => m.status === 'pending');
@@ -191,16 +201,20 @@ function renderDm() {
   };
   const arrived = people.filter(p => dmStatus(p.id) !== 'none'), missing = people.filter(p => dmStatus(p.id) === 'none');
   const bot = (html, id = '') => `<div class="dm-bot"><span class="dm-bot-mark" aria-hidden="true">ポ</span><div class="dm-card"${id ? ` id="${id}"` : ''}>${html}</div></div>`;
-  const bubbles = messages.map(m => { const lines = m.text.split('\n').filter(line => line.trim()); return `<p class="dm-time">${esc(shortTime(m.at))}${m.demo ? ' · サンプル' : ''}</p>${lines.map((line, i) => `<div class="dm-line">${i === lines.length - 1 ? avatar(s, ' is-small') : '<span class="avatar-spacer"></span>'}<p class="dm-bubble">${esc(line)}</p></div>`).join('')}`; }).join('');
+  const bubbles = messages.map(m => { const lines = m.text.split('\n').filter(line => line.trim()); return `<p class="dm-time">${esc(shortTime(m.at))}${m.demo ? ' · サンプル' : m.source === 'instagram' ? ' · Instagram' : ''}</p>${lines.map((line, i) => `<div class="dm-line">${i === lines.length - 1 ? avatar(s, ' is-small') : '<span class="avatar-spacer"></span>'}<p class="dm-bubble">${esc(line)}</p></div>`).join('')}`; }).join('');
   let stage = '';
-  if (c?.needsClarification) stage = bot(`<strong class="dm-card-title">うまく読み取れませんでした</strong><p>${esc(c.explanation)}</p><div class="actions"><button class="secondary" id="dm-manual">文章を直して入力する</button></div>`);
-  else if (c) stage = bot(`<div class="dm-card-head"><strong class="dm-card-title">読み取りました（${c.entries.length}日分）</strong><span>右の表に、点線で候補を出しています。まだ保存されていません。</span></div>${previewCardsHtml(c, s.id)}<p class="muted">反映する日だけチェック。日付と時刻は直接直せます。</p><div class="actions"><button id="dm-save">この内容で登録する（<span id="dm-save-count">${c.entries.filter(e => e.included !== false).length}</span>日分）</button><button class="text-button" id="dm-reread" ${busy ? 'disabled' : ''}>読み取り直す</button></div>`, 'dm-review');
+  const profile = c?.profile && Object.keys(c.profile.fields).length ? c.profile : null;
+  if (c?.needsClarification && !profile) stage = bot(`<strong class="dm-card-title">うまく読み取れませんでした</strong><p>${esc(c.explanation)}</p><div class="actions"><button class="secondary" id="dm-manual">文章を直して入力する</button></div>`);
+  else if (c) stage = bot(`<div class="dm-card-head"><strong class="dm-card-title">読み取りました（${[c.needsClarification ? '' : `${c.entries.length}日分`, profile ? `基本情報${Object.keys(profile.fields).length}件` : ''].filter(Boolean).join('・')}）</strong><span>${c.needsClarification ? '勤務希望の日付は見つかりませんでした。' : '右の表に、点線で候補を出しています。'}まだ保存されていません。</span></div>${c.needsClarification ? '' : `${previewCardsHtml(c, s.id)}<p class="muted">反映する日だけチェック。日付と時刻は直接直せます。</p>`}${profile ? profileCardHtml(profile, s) : ''}<div class="actions"><button id="dm-save">この内容で登録する（<span id="dm-save-count">${saveCountText(c)}</span>）</button><button class="text-button" id="dm-reread" ${busy ? 'disabled' : ''}>読み取り直す</button></div>`, 'dm-review');
   else if (messages.length && !pending.length) stage = bot(`<p class="dm-saved"><span aria-hidden="true">✓</span> 希望表に登録しました</p><button class="secondary" id="dm-open-table">シフト表で見る</button>`);
   const registered = Object.keys(requests(s.id)).length;
   const chatBody = messages.length ? `${bubbles}${stage}` : `<div class="dm-empty"><p>${esc(s.name)}からのDMは、まだ届いていません。</p>${registered ? `<p class="muted">この月は${registered}日分を登録済みです（文章・Excelなど）。</p>` : ''}<p class="muted">下の「テストDMを受信」で、届いたときの流れを試せます。</p></div>`;
-  content.innerHTML = `<section class="dm-view"><aside class="dm-list" aria-label="会話の一覧"><div class="dm-list-head"><h2>メッセージ</h2><span class="muted">${esc(year)}年${monthNumber}月分</span></div><button class="secondary dm-request" id="dm-request">提出依頼の文章をコピー</button><div class="dm-people">${arrived.map(personRow).join('')}</div>${missing.length ? `<div class="dm-missing"><h3>まだ希望が届いていない人</h3><div class="dm-people">${missing.map(personRow).join('')}</div></div>` : ''}</aside><div class="dm-chat" aria-label="チャット"><div class="dm-chat-head">${avatar(s, ' is-large')}<div><h2>${esc(s.name)}</h2><span class="muted">${monthNumber}月分の希望 · ${DM_STATUS_LABELS[dmStatus(s.id)]}</span></div></div><div class="dm-messages">${chatBody}</div><div class="dm-chat-foot"><div class="actions">${pending.length && !c ? `<button id="dm-read" ${busy ? 'disabled' : ''}>${busy ? '読み取り中…' : 'このDMを読み取る'}</button>` : ''}<button class="secondary" id="dm-test" ${busy ? 'disabled' : ''}>テストDMを受信</button></div><p class="muted">このアプリからは返信しません。テストDMはInstagramに接続せず、受信したときの流れを画面上で再現します。</p></div></div><div class="dm-table" id="dm-table" aria-label="週の希望表"></div></section>`;
+  content.innerHTML = `<section class="dm-view"><aside class="dm-list" aria-label="会話の一覧"><div class="dm-list-head"><h2>メッセージ</h2><span class="muted">${esc(year)}年${monthNumber}月分</span></div><button class="secondary dm-request" id="dm-request">提出依頼の文章をコピー</button>${igConnection.url ? `<button class="dm-request" id="dm-fetch" ${igBusy || busy ? 'disabled' : ''}>${igBusy ? '受信中…' : 'Instagramから受信'}</button>` : '<button class="text-button dm-request" id="dm-connect">Instagramと接続する</button>'}${state.igUnlinked.length ? `<div class="dm-unlinked"><h3>送り主が未登録のDM <span>${state.igUnlinked.length}件</span></h3>${[...new Set(state.igUnlinked.map(m => m.senderId))].map(senderId => { const first = state.igUnlinked.find(m => m.senderId === senderId); return `<div class="dm-unlinked-item"><p>${esc(first.text.split('\n')[0])}</p><small>送り主ID ${esc(senderId)} · ${state.igUnlinked.filter(m => m.senderId === senderId).length}件</small><label>だれのDMか<select data-link-sender="${esc(senderId)}"><option value="">選んでください</option>${state.staff.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label></div>`; }).join('')}<p class="muted">名前が似ていても自動では決めません。一度選ぶと、次からその人のDMとして届きます。</p></div>` : ''}<div class="dm-people">${arrived.map(personRow).join('')}</div>${missing.length ? `<div class="dm-missing"><h3>まだ希望が届いていない人</h3><div class="dm-people">${missing.map(personRow).join('')}</div></div>` : ''}</aside><div class="dm-chat" aria-label="チャット"><div class="dm-chat-head">${avatar(s, ' is-large')}<div><h2>${esc(s.name)}</h2><span class="muted">${monthNumber}月分の希望 · ${DM_STATUS_LABELS[dmStatus(s.id)]}</span></div></div><div class="dm-messages">${chatBody}</div><div class="dm-chat-foot"><div class="actions">${pending.length && !c ? `<button id="dm-read" ${busy ? 'disabled' : ''}>${busy ? '読み取り中…' : 'このDMを読み取る'}</button>` : ''}<button class="secondary" id="dm-test" ${busy ? 'disabled' : ''}>テストDMを受信</button></div><p class="muted">このアプリからは返信しません。${igConnection.url ? 'Instagramから受信したDMは、いま選んでいる月の希望として扱います。' : 'テストDMはInstagramに接続せず、受信したときの流れを画面上で再現します。'}</p></div></div><div class="dm-table" id="dm-table" aria-label="週の希望表"></div></section>`;
   document.querySelectorAll('[data-conversation]').forEach(b => b.onclick = () => openConversation(b.dataset.conversation));
   document.querySelector('#dm-request').onclick = openRequestCopy;
+  document.querySelector('#dm-fetch')?.addEventListener('click', () => fetchInstagram());
+  document.querySelector('#dm-connect')?.addEventListener('click', () => go('instagram'));
+  document.querySelectorAll('[data-link-sender]').forEach(select => select.onchange = () => { if (select.value) linkSender(select.dataset.linkSender, select.value); });
   document.querySelector('#dm-test').onclick = receiveTestDm;
   document.querySelector('#dm-read')?.addEventListener('click', readDm);
   document.querySelector('#dm-reread')?.addEventListener('click', () => { dmCandidates.delete(draftKey()); readDm(); });
@@ -208,13 +222,54 @@ function renderDm() {
   document.querySelector('#dm-manual')?.addEventListener('click', () => { keepIntake(); draft = c.text; candidate = null; applied = null; keepIntake(); view = 'intake'; render(); });
   const review = document.querySelector('#dm-review');
   if (review) {
-    const update = () => { const count = c.entries.filter(e => e.included !== false).length; document.querySelector('#dm-save-count').textContent = count; document.querySelector('#dm-save').disabled = !count; renderDmTable(); };
-    bindPreviewCards(review, c, update);
-    document.querySelector('#dm-save').disabled = !c.entries.some(e => e.included !== false);
+    const update = () => { document.querySelector('#dm-save-count').textContent = saveCountText(c); document.querySelector('#dm-save').disabled = !hasSelection(c); renderDmTable(); };
+    if (!c.needsClarification) bindPreviewCards(review, c, update);
+    review.querySelectorAll('[data-profile-field]').forEach(box => box.onchange = () => { c.profile.include[box.dataset.profileField] = box.checked; update(); });
+    document.querySelector('#dm-save').disabled = !hasSelection(c);
     document.querySelector('#dm-save').onclick = saveDm;
   }
   const list = document.querySelector('.dm-messages'); list.scrollTop = list.scrollHeight;
   renderDmTable();
+}
+// Staff basic conditions found in the same DM. Each item is a candidate the manager ticks before saving.
+const PROFILE_LABELS = { category: '区分', experience: '経験', preference: '勤務量', weekdays: '基本曜日', time: '基本時間' };
+const weekdayText = days => [1, 2, 3, 4, 5, 6, 0].filter(d => days.includes(d)).map(d => '日月火水木金土'[d]).join('・') || 'なし';
+const profileValueText = (key, value) => key === 'weekdays' ? weekdayText(value) : key === 'time' ? `${value.start}〜${value.end}` : value;
+const profileCurrent = (key, person) => key === 'time' ? { start: person.start, end: person.end } : person[key];
+async function readProfile(text, s, hasSchedule) {
+  let result, fallback = PUBLIC_DEMO;
+  if (PUBLIC_DEMO) result = parseStaffProfileRules(text);
+  else {
+    try {
+      const response = await fetch('/api/staff/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text, staffName: s.name }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error);
+      result = normalizeStaffProfile({ ...body.fields, weekdays: body.fields.weekdays, start: body.fields.time?.start, end: body.fields.time?.end });
+    } catch { result = parseStaffProfileRules(text); fallback = true; }
+  }
+  // Drop items that already match the saved conditions.
+  const fields = Object.fromEntries(Object.entries(result.fields).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(profileCurrent(key, s))));
+  // Weekdays and hours in a DM that also lists dates are usually about this month only, so they start unticked.
+  const include = Object.fromEntries(Object.keys(fields).map(key => [key, !(hasSchedule && ['weekdays', 'time'].includes(key))]));
+  return { fields, include, fallback };
+}
+function profileCardHtml(profile, s) {
+  return `<div class="dm-profile"><h4>基本情報の候補</h4>${PROFILE_FIELDS.filter(key => key in profile.fields).map(key => `<label class="dm-profile-row"><input type="checkbox" data-profile-field="${key}" ${profile.include[key] ? 'checked' : ''}><span class="dm-profile-label">${PROFILE_LABELS[key]}</span><span class="dm-profile-change"><span class="muted">${esc(profileValueText(key, profileCurrent(key, s)) || '未設定')}</span> → <strong>${esc(profileValueText(key, profile.fields[key]))}</strong></span></label>`).join('')}<p class="muted">${profile.fallback ? (PUBLIC_DEMO ? '公開版は決まった言い方だけを読み取ります。' : 'AIに接続できないため、決まった言い方だけを読み取りました。') : 'AIの読み取り結果です。'}チェックした項目だけスタッフの基本情報に保存します。</p></div>`;
+}
+function profileChanges(c) {
+  if (!c.profile) return {};
+  const changes = {};
+  for (const [key, value] of Object.entries(c.profile.fields)) {
+    if (!c.profile.include[key]) continue;
+    if (key === 'time') Object.assign(changes, value);
+    else changes[key] = structuredClone(value);
+  }
+  return changes;
+}
+const hasSelection = c => (!c.needsClarification && c.entries.some(e => e.included !== false)) || Object.values(c.profile?.include || {}).some(Boolean);
+function saveCountText(c) {
+  const days = c.needsClarification ? 0 : c.entries.filter(e => e.included !== false).length;
+  const items = Object.values(c.profile?.include || {}).filter(Boolean).length;
+  return [days ? `${days}日分` : '', items ? `基本情報${items}件` : ''].filter(Boolean).join('＋') || '0件';
 }
 function renderDmTable() {
   const root = document.querySelector('#dm-table'); if (!root) return;
@@ -250,14 +305,21 @@ function receiveTestDm() {
     render(); notify(`${s.name}からテストDMが届きました。`);
   } catch (e) { notify(e.message); }
 }
+const scheduleSentences = text => text.split(/[。\n]/).map(t => t.trim()).filter(t => /\d/.test(t) && !/(年生|\d年|歳|大学|高校|専門|経験)/.test(t)).join('\n');
 async function readDm() {
   const s = member(), messages = pendingMessages(s.id); if (busy || !messages.length) return;
   const key = draftKey(), text = messages.map(m => m.text).join('\n'), snapshot = stamp();
   busy = true; render();
   try {
-    const result = await readRequest(text, s);
+    // A self-introduction mixed with dates often fails as a whole; retry with only the sentences that mention dates.
+    const dateSentences = scheduleSentences(text), canRetry = dateSentences && dateSentences !== text;
+    let result;
+    try { result = await readRequest(text, s); }
+    catch (error) { if (!canRetry) throw error; result = await readRequest(dateSentences, s); }
+    if (result.needsClarification && canRetry) { const retry = await readRequest(dateSentences, s); if (!retry.needsClarification) result = retry; }
+    const c = { ...result, snapshot, text, source: messages.some(m => m.source === 'instagram') ? 'instagram' : 'instagram-demo', messageIds: messages.map(m => m.id) };
+    c.profile = await readProfile(text, s, !c.needsClarification && c.entries.length > 0);
     if (snapshot !== stamp()) throw new Error('条件が変わりました。もう一度読み取ってください。');
-    const c = { ...result, snapshot, text, source: 'instagram-demo', messageIds: messages.map(m => m.id) };
     dmCandidates.set(key, c);
     if (!c.needsClarification) dmWeek = weekOf(c);
   } catch (e) { notify(e.message); }
@@ -267,10 +329,17 @@ function saveDm() {
   const key = draftKey(), c = dmCandidates.get(key);
   try {
     if (c.snapshot !== stamp()) throw new Error('希望表が変わりました。「読み取り直す」を押してください。');
-    const entries = readPreviewEntries(document.querySelector('#dm-review'), c);
-    commitEntries(selectedStaff, entries, c.source, c.text);
+    const root = document.querySelector('#dm-review');
+    const entries = c.needsClarification || !c.entries.some(e => e.included !== false) ? [] : readPreviewEntries(root, c);
+    const changes = profileChanges(c);
+    if (!entries.length && !Object.keys(changes).length) throw new Error('登録する項目を1つ以上選んでください。');
+    if (entries.length) commitEntries(selectedStaff, entries, c.source, c.text);
+    if (Object.keys(changes).length) {
+      if (staffDraft) throw new Error('スタッフ編集中です。先に保存するか、キャンセルしてください。');
+      save({ ...state, staff: state.staff.map(p => p.id === selectedStaff ? { ...p, ...changes } : p) });
+    }
     saveInbox(selectedStaff, thread(selectedStaff).map(m => c.messageIds.includes(m.id) ? { ...m, status: 'saved' } : m));
-    dmCandidates.delete(key); render(); notify(`${member().name} · ${entries.length}日分を希望表に登録しました。`);
+    dmCandidates.delete(key); render(); notify(`${member().name} · ${[entries.length ? `${entries.length}日分を希望表に` : '', Object.keys(changes).length ? '基本情報を' : ''].filter(Boolean).join('、')}登録しました。`);
   } catch (e) { notify(e.message); }
 }
 // The app cannot start a DM, so the manager copies this text and sends it from Instagram.
@@ -300,6 +369,65 @@ function openRequestCopy() {
     status.textContent = copied ? 'コピーしました。Instagramに貼り付けて送ってください。' : 'コピーできませんでした。文章を選んで手でコピーしてください。';
   };
   modal.showModal();
+}
+// Instagram receiver (instagram-worker/). The app only reads received DMs; it never sends any.
+function saveConnection(next) {
+  igConnection = next;
+  try { localStorage.setItem(IG_KEY, JSON.stringify(next)); } catch { throw new Error('接続設定をブラウザに保存できませんでした。'); }
+}
+async function callReceiver(path, connection = igConnection) {
+  let response;
+  try { response = await fetch(`${connection.url.replace(/\/+$/, '')}${path}`, { headers: { Authorization: `Bearer ${connection.key}` } }); }
+  catch { throw new Error('受信サーバーにつながりません。URLを確認してください。'); }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `受信サーバーがエラーを返しました（${response.status}）。`);
+  return body;
+}
+async function fetchInstagram(quiet = false) {
+  if (igBusy || !igConnection.url) return;
+  igBusy = true; igLastFetch = Date.now(); if (view === 'dm') render();
+  try {
+    const { messages } = await callReceiver(`/api/messages?since=${encodeURIComponent(igConnection.since || '')}`);
+    const seen = new Set(state.igSeen), next = structuredClone(state);
+    let linked = 0, unlinked = 0;
+    for (const m of messages) {
+      if (seen.has(m.mid)) continue;
+      seen.add(m.mid);
+      const person = next.staff.find(p => p.igSenderId === m.senderId);
+      if (person) { next.inbox[next.month] ||= {}; (next.inbox[next.month][person.id] ||= []).push({ id: m.mid, at: m.sentAt, text: m.text, status: 'pending', source: 'instagram' }); linked++; }
+      else { next.igUnlinked.push({ mid: m.mid, senderId: m.senderId, text: m.text, sentAt: m.sentAt }); unlinked++; }
+    }
+    next.igSeen = [...seen].slice(-2000);
+    save(next);
+    if (messages.length) saveConnection({ ...igConnection, since: messages.at(-1).receivedAt });
+    if (linked || unlinked || !quiet) notify(linked || unlinked ? `Instagramから${linked + unlinked}件受信しました${unlinked ? `（送り主が未登録 ${unlinked}件）` : ''}。` : '新しいDMはありません。');
+  } catch (e) { if (!quiet || view === 'dm') notify(e.message); }
+  finally { igBusy = false; if (view === 'dm') render(); }
+}
+function linkSender(senderId, staffId) {
+  try {
+    const next = structuredClone(state), person = next.staff.find(p => p.id === staffId);
+    for (const p of next.staff) if (p.igSenderId === senderId) delete p.igSenderId;
+    person.igSenderId = senderId;
+    const moving = next.igUnlinked.filter(m => m.senderId === senderId);
+    next.inbox[next.month] ||= {};
+    (next.inbox[next.month][staffId] ||= []).push(...moving.map(m => ({ id: m.mid, at: m.sentAt, text: m.text, status: 'pending', source: 'instagram' })));
+    next.igUnlinked = next.igUnlinked.filter(m => m.senderId !== senderId);
+    save(next); selectedStaff = staffId; render(); notify(`${person.name}のDMとして登録しました。`);
+  } catch (e) { notify(e.message); }
+}
+function renderInstagram() {
+  const linked = state.staff.filter(s => s.igSenderId);
+  content.innerHTML = `<section class="instagram-view"><h2>Instagram連携</h2><p class="muted">受信サーバー（Cloudflare Worker）からDMを読み込みます。このアプリからDMを送ったり返信したりはしません。URLと管理キーはこのブラウザだけに保存します。</p><form id="ig-form" class="ig-form"><label>受信サーバーのURL<input name="url" type="url" placeholder="https://porte-instagram.○○.workers.dev" value="${esc(igConnection.url)}" required></label><label>管理キー<input name="key" type="password" autocomplete="off" value="${esc(igConnection.key)}" required></label><div class="actions"><button>保存して接続を確認</button>${igConnection.url ? '<button type="button" class="secondary" id="ig-disconnect">接続を解除</button>' : ''}</div></form><p id="ig-status" role="status"></p><h3>送り主とスタッフの紐づけ</h3>${linked.length ? `<ul class="ig-links">${linked.map(s => `<li><span>${esc(s.name)}</span><small>送り主ID ${esc(s.igSenderId)}</small><button class="text-button" data-unlink="${esc(s.id)}">解除</button></li>`).join('')}</ul>` : '<p class="muted">まだありません。DM画面で、届いたDMの送り主を選ぶと登録されます。</p>'}<details class="help-details"><summary>受け取れるDMについて</summary><p>店舗アカウントへの個別DMのうち、文章のものだけを受け取ります。グループDM、画像だけ・削除されたメッセージは受け取りません。Metaの審査前（開発モード）は、アプリにテスターとして登録した人のDMだけが届きます。</p></details></section>`;
+  document.querySelector('#ig-form').onsubmit = async e => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget), next = { url: String(form.get('url')).trim(), key: String(form.get('key')).trim(), since: igConnection.url === String(form.get('url')).trim() ? igConnection.since : '' };
+    const status = document.querySelector('#ig-status'); status.className = ''; status.textContent = '確認中…';
+    try { const result = await callReceiver('/api/status', next); saveConnection(next); status.className = 'good'; status.textContent = `接続しました。受信サーバーに${result.count}件のDMがあります。`; }
+    catch (error) { status.className = 'error'; status.textContent = error.message; }
+  };
+  document.querySelector('#ig-disconnect')?.addEventListener('click', () => { try { saveConnection({ url: '', key: '', since: '' }); render(); notify('接続を解除しました。受信済みのDMは残ります。'); } catch (e) { notify(e.message); } });
+  document.querySelectorAll('[data-unlink]').forEach(b => b.onclick = () => { try { save({ ...state, staff: state.staff.map(s => s.id === b.dataset.unlink ? (({ igSenderId, ...rest }) => rest)(s) : s) }); render(); } catch (e) { notify(e.message); } });
 }
 function renderMonth() {
   const count = daysInMonth(state.month), settings = coverageSettings(), rows = coverageRows();
@@ -366,7 +494,7 @@ function renderStaffEdit() {
 }
 function renderHistory() {
   const entries = state.history.filter(h => h.month === state.month);
-  content.innerHTML = `<section><h2>履歴</h2><p class="muted">${esc(state.month)} · ${entries.length}件</p>${entries.map(h => `<details class="history-entry"><summary><strong>${esc(h.staffName)}</strong><span>${esc(new Date(h.at).toLocaleString('ja-JP'))}</span><span>${h.entries.length ? `${h.entries.length}日分` : '未登録に変更'}</span>${h.source === 'instagram-demo' ? '<span class="draft-badge">テストDM</span>' : ''}</summary><p class="history-message">${esc(h.text)}</p><p>${h.entries.map(e => `${e.day}日 ${caption(e)}${e.startDefaulted || e.endDefaulted ? '（基本時間）' : ''}`).map(esc).join(' ／ ') || 'セルを未登録に変更'}</p></details>`).join('') || '<p>まだ履歴はありません。</p>'}<details class="help-details"><summary>保存する内容</summary><p>反映した元文章と変更内容を、全月合わせて最新100件まで保存します。</p></details></section>`;
+  content.innerHTML = `<section><h2>履歴</h2><p class="muted">${esc(state.month)} · ${entries.length}件</p>${entries.map(h => `<details class="history-entry"><summary><strong>${esc(h.staffName)}</strong><span>${esc(new Date(h.at).toLocaleString('ja-JP'))}</span><span>${h.entries.length ? `${h.entries.length}日分` : '未登録に変更'}</span>${h.source === 'instagram-demo' ? '<span class="draft-badge">テストDM</span>' : h.source === 'instagram' ? '<span class="draft-badge">Instagram</span>' : ''}</summary><p class="history-message">${esc(h.text)}</p><p>${h.entries.map(e => `${e.day}日 ${caption(e)}${e.startDefaulted || e.endDefaulted ? '（基本時間）' : ''}`).map(esc).join(' ／ ') || 'セルを未登録に変更'}</p></details>`).join('') || '<p>まだ履歴はありません。</p>'}<details class="help-details"><summary>保存する内容</summary><p>反映した元文章と変更内容を、全月合わせて最新100件まで保存します。</p></details></section>`;
 }
 function renderCoverage() {
   const settings = coverageSettings();
