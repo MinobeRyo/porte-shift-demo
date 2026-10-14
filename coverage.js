@@ -83,3 +83,19 @@ export function summarizeCoverage({ month, staff, requests, settings } = {}) {
     return { day, availableCount, unreportedCount, minimumAvailable, shortages, veteranCount };
   });
 }
+
+/**
+ * 表示用の不足区分。対象時間の全体が不足なら full、足りている時間帯があれば partial。
+ * partial は店の判断で許容される場合があるため、画面では弱い色で区別する。
+ */
+export function describeShortage(row, settings) {
+  if (!settings?.required || !row?.shortages?.length) return { level: 'none', missing: 0, ranges: [] };
+  const total = minutes(settings.end, '対象の終了時刻') - minutes(settings.start, '対象の開始時刻');
+  const short = row.shortages.reduce((sum, s) => sum + minutes(s.end, '不足の終了時刻') - minutes(s.start, '不足の開始時刻'), 0);
+  const hour = value => value.replace(/^0/, '').replace(/:00$/, '');
+  return {
+    level: short >= total ? 'full' : 'partial',
+    missing: Math.max(...row.shortages.map(s => s.missing)),
+    ranges: row.shortages.map(s => `${hour(s.start)}–${hour(s.end)}`),
+  };
+}

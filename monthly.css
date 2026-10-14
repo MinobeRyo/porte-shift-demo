@@ -431,3 +431,13 @@ button.dm-cell:hover { filter: brightness(.96); box-shadow: 0 0 0 2px var(--line
   .app-navigation nav button { justify-content: center; }
   .app-navigation nav svg { display: none; }
 }
+
+/* Shortage levels: full day (strong) vs. only some hours (light, may be acceptable). */
+.shortage-cell small, .coverage-day-button small { display: block; font-size: 10px; font-weight: 500; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shortage-cell.is-full, .legend-chip.is-full, .dm-short.is-full { background: var(--off-bg); color: var(--off-ink); }
+.shortage-cell.is-partial, .legend-chip.is-partial, .dm-short.is-partial { background: #FBF5DF; color: #6E5A1A; box-shadow: inset 0 0 0 1px #EBDDA8; }
+.coverage-day-button.is-full { background: var(--off-bg); border-color: #E5CBA9; color: var(--off-ink); }
+.coverage-day-button.is-partial { background: #FBF5DF; border-color: #EBDDA8; color: #6E5A1A; }
+.legend-chip { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-right: 3px; }
+.dm-short { white-space: nowrap; }
+.dm-short.is-partial { font-weight: 500; }
