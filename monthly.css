@@ -466,3 +466,19 @@ button.dm-cell:hover { filter: brightness(.96); box-shadow: 0 0 0 2px var(--line
 .dm-profile-label { flex: 0 0 64px; font-size: 13px; font-weight: 700; }
 .dm-profile-change { font-size: 14px; overflow-wrap: anywhere; }
 .dm-profile > .muted { margin: 6px 0 0; font-size: 12px; }
+
+/* Account linking */
+.staff-account { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding: 8px 10px; border-radius: 10px; background: var(--empty-bg); font-size: 13px; }
+.staff-account.is-linked { background: var(--want-bg); color: var(--want-ink); }
+.staff-account-actions { display: flex; gap: 4px; }
+.staff-account .text-button { min-height: 32px; }
+.dm-account { color: var(--berry-ink); font-weight: 700; }
+.link-summary { font-size: 16px; line-height: 1.7; }
+.link-preview { margin: 12px 0; padding: 10px 12px; border-radius: 12px; background: var(--bubble); }
+.link-preview p { margin: 4px 0 0; overflow-wrap: anywhere; }
+.link-warning { padding: 10px 12px; border-radius: 10px; background: var(--off-bg); color: var(--off-ink); }
+.link-check { display: flex; gap: 8px; align-items: center; margin: 8px 0; font-size: 14px; }
+.account-list { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; max-height: 50vh; overflow-y: auto; }
+.account-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.account-row span { display: flex; flex-direction: column; min-width: 0; }
+.account-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
